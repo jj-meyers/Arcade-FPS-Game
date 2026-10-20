@@ -1,28 +1,32 @@
-# CHAOS FPS
+# Unfug
 
-**Organized nonsense.** An original browser FPS about heavily armed beans, weaponized soda, questionable physics, and free-for-all bot matches. The map is intentionally a small, replaceable graybox.
+A browser arena shooter about movement, homemade contraptions, and controlled nonsense. This expands the existing game: its original movement, equipment, graybox arena, and bot loop remain the foundation.
 
-## Play without installing anything
-
-Download the generated `dist/chaos-fps.html` and open the saved file directly in a current desktop Chrome or Edge browser. It contains the game, renderer, styling and procedural assets in one file; no server or internet connection is required. Use **LET'S MAKE CHAOS** → **START THE MESS** to capture the mouse.
-
-Embedded previews may forbid mouse capture, even when the page renders correctly. Open the downloaded file in a normal browser window. The cloud onboarding interface also does not expose the cloud machine's `localhost` as a public game URL.
-
-To regenerate this portable version after source changes, run `npm run build:standalone`. The regular website build remains `npm run build`.
+**Play:** [jj-meyers.github.io/Arcade-FPS-Game](https://jj-meyers.github.io/Arcade-FPS-Game/). The static site supports local bot matches. Online rooms require a separately running compatible WebSocket server; GitHub Pages does not run that server.
 
 ## Run locally
 
-Use **Node.js 22.12+** (Node 24 is used in this environment).
+Use Node.js **22.12 or newer**. This workspace uses Node 24.
 
 ```sh
-cd /workspace/Arcade-FPS-Game  # or your local clone
 npm ci
 npm run dev
 ```
 
-Open the local address Vite prints in a current desktop browser. Click **LET'S MAKE CHAOS**, choose match settings, then **START THE MESS**. That click captures the mouse and enables procedural audio. Esc pauses and releases the mouse; click **BACK TO THE MESS** to resume.
+Open the address Vite prints in a desktop browser. Start a match to capture the mouse and enable audio. Esc releases the mouse. Local bot matches pause when the browser loses focus; a shared online match keeps running on its server.
 
-If this cloud machine's default npm cache is not writable, use `npm ci --cache /workspace/.npm-cache`. No accounts, credentials, paid assets, backend, or external runtime services are needed. This is a desktop keyboard-and-mouse game; touch controls are not implemented.
+For a cache-permission issue in the cloud workspace, use `npm ci --cache /workspace/.npm-cache`. No accounts or external assets are needed for bot play. Touch gameplay and controllers are not implemented.
+
+## Play styles
+
+- **FFA or Team Deathmatch:** 0–12 bots, easy/normal/hard/veteran, match length, score limit, team selection and bot class selection.
+- **Six classes:** Runner dash, Bulwark brace, Medic healing, Engineer resupply, Disruptor slowing field, Acrobat airborne launch. Everyone has 100 health and the same collision dimensions.
+- **Impulse:** movement fills a meter. Spend it on a short directional Repel, Lift or Pull pulse. It moves enemies and flying projectiles without directly dealing damage. Cover, positioning and resistant builds provide counters.
+- **Twelve weapons:** fast spray, shotgun recoil, ricochets, explosives, precision, launch/pull tools, timed burst, spin-up, glue slow, returning disc and chain conductor.
+- **Eight gadgets, three perks, six presets:** choose combinations freely. Each gun has a five-point tuning budget, with explicit stat tradeoffs.
+- **Appearance:** body/accent colors, hats, face/back accessories, patterns and weapon finishes. Cosmetics do not alter stats or hitboxes. Six saved custom loadouts live in browser storage.
+
+The map remains one small graybox. The project focuses on combat, bots and interactions before adding more arenas or modes.
 
 ## Controls
 
@@ -30,57 +34,67 @@ If this cloud machine's default npm cache is not writable, use `npm ci --cache /
 | --- | --- |
 | WASD / mouse | Move / look |
 | Shift | Sprint |
-| Space | Jump |
-| C or Ctrl | Crouch |
+| C or Ctrl | Crouch; press while sprinting to slide |
+| Space | Jump; cancels a slide |
 | Left mouse | Fire |
-| Right mouse | Aim; with the magnet, hold with fire to push |
+| Right mouse | Aim; with Yoink, hold with fire to push |
 | R | Reload |
 | 1 / 2 or wheel | Switch weapons |
 | Q / E | Tactical / lethal gadget |
+| F | Class ability |
+| X | Impulse, when fully charged |
 | Tab (hold) | Scoreboard |
-| Esc | Pause and free mouse |
+| Esc | Menu / release mouse |
 
-Try **Space Program** in the arsenal: launch a rival with Ceiling Fan Club, switch to Personal Space Invader, and pull them back. **Rubber Duckruptcy** gets stronger after a bounce. **Ding-Dong, Gone** can kick you into the air if you fire downward while jumping. Spring pads work on everyone. Bubbles block incoming shots, while their owner can shoot out. Drama Magnets bend projectiles and draw rivals toward a grenade.
+Try **Air Time**: launch a rival, switch to a precision or pulling weapon, then use your Impulse to change their landing. **Banker** uses ricochets and cover. **Support** combines team healing, speed and a weapon that punishes clustered enemies. These are strategies to experiment with, not claims of settled competitive balance.
 
-## What's here
+## Small-room multiplayer
 
-- Fixed-step movement with sprint, jump, air steering, crouch, ramps and collision.
-- Seven weapons, five cooldown gadgets, three perks, four presets and persistent custom loadouts.
-- One complete FFA mode: 1–12 bots, three difficulties, four bot personalities, countdown, respawn protection, timer/score endings, rankings, replay and pause.
-- Bots use line of sight, delayed reactions, finite memory, imperfect aim, A* navigation, strafing, retreating, weapons and gadgets. They fight each other too.
-- Procedural characters, toy weapons, recoil/reload animations, effects and Web Audio sounds.
-- Persistent sensitivity, FOV, sound, graphics, render scale, crosshair and shake settings.
+```sh
+npm run server
+```
+
+The server listens on `0.0.0.0:8080` by default. Override `HOST` and `PORT` as needed. `GET /health` reports readiness and room count. Open the game's online menu, use `ws://localhost:8080` when playing locally, create a room and share its six-character code. Other players connect to the **same server URL** and code. The host starts the match or rematch. Rooms support at most eight humans plus twelve bots.
+
+For remote play, run the Node server on a persistent host behind TLS with WebSocket upgrades enabled, and supply its `wss://` address. An HTTPS GitHub Pages client cannot use an insecure remote `ws://` server. There is no publicly deployed multiplayer endpoint bundled with the static game.
+
+The server owns simulation, movement, damage, scoring and match results. Clients submit bounded input. Authoritative simulation runs at 60 Hz and broadcasts snapshots at 15 Hz; the browser interpolates state. The first version has no client movement prediction, server rewind/lag compensation, account authentication or reconnect recovery. Public competitive deployment needs further security, latency and operational testing.
 
 ## Build and verify
 
 ```sh
-npm test                 # deterministic Node tests
-npm run build            # static production output in dist/
-npm run preview          # inspect that build locally
-npm run test:browser     # Builds, then tests in Chromium using a local preview server
+npm test                    # deterministic gameplay + real server/client tests
+npm run build               # normal static production output in dist/
+npm run preview             # inspect that output locally
+npm run build:standalone     # self-contained dist/unfug.html
+npm run test:browser         # builds a snapshot, runs real Chromium/WebGL workflows
+npm run test:network:browser # two independent browsers with a real room server
+node tests/benchmark.mjs     # 12 bots x four difficulties, CPU simulation timings
 ```
 
-Browser tests use `/usr/bin/chromium` if present. Otherwise install a Playwright browser with `npx playwright install chromium`, or set `CHROMIUM_PATH` to a compatible local Chromium executable. Screenshots and the browser report go to ignored `test-results/`. See [testing notes](docs/TESTING.md) for scope and manual checks.
+The portable HTML contains the game and procedural assets. Download it and open it in a desktop browser, or serve it from a static host. Bot play has no runtime network dependency. Sandboxed embedded previews may disallow pointer lock; use a normal browser tab.
 
-Deploy the contents of `dist/` to a static HTTPS host. The production game makes no external requests. Networking/multiplayer and desktop packaging are future work. A development server is for local development, not production hosting.
+Browser tests use `/usr/bin/chromium` if present, otherwise Playwright's installed Chromium; `CHROMIUM_PATH` can override it. Generated reports and screenshots are ignored in `test-results/`. See [TESTING.md](docs/TESTING.md) for executed evidence and its limits.
 
 ## Development map
 
 | Location | Responsibility |
 | --- | --- |
-| `src/game/Game.js` | Actors, damage, lifecycle, scoring, authoritative simulation |
-| `src/game/physics.js`, `math.js` | Movement, geometry and ray queries |
-| `src/game/Combat.js` | Weapons, ammo, projectiles, gadgets and shared interactions |
-| `src/game/AI.js`, `navigation.js` | Bot decisions and navigation |
-| `src/data/catalog.js` | Equipment values, descriptions, presets, perks |
-| `src/data/arena.js` | The deliberately simple, replaceable map |
-| `src/render/` | Three.js presentation and procedural assets |
-| `src/platform/` | Keyboard/mouse input and audio synthesis |
-| `src/ui/` | Menus, HUD and saved preferences |
-| `src/main.js` | Browser lifecycle and fixed-step integration |
+| `src/game/Game.js` | Actors, shared human input, damage, teams, assists and match lifecycle |
+| `src/game/physics.js`, `math.js` | Movement, slide, collision and geometric queries |
+| `src/game/Combat.js` | Weapons, projectiles, gadgets, class abilities and Impulse |
+| `src/game/AI.js`, `navigation.js` | Perception, tactics, navigation and difficulty |
+| `src/data/catalog.js` | Weapon/gadget/perk/preset balance |
+| `src/data/customization.js` | Classes, cosmetics, tuning budgets and validation |
+| `src/data/arena.js` | Graybox geometry and spawns |
+| `src/render/` | Three.js models, animation and bounded effects |
+| `src/platform/` | Keyboard/mouse and audio synthesis |
+| `src/ui/` | Menus, HUD and versioned saved preferences |
+| `src/net/`, `server/` | Client transport, snapshots and authoritative room server |
+| `src/main.js` | Local/network lifecycle, input and frame loop |
 
-The simulation has no DOM or Three.js dependency. Inputs, actor IDs and events form a useful boundary for eventual networking; no network transport, prediction or server authority is implemented yet. New maps must supply collision shapes, spawns and ramp data, then rebuild the AI navigation grid.
+Simulation is independent of the DOM and Three.js. Both local games and the room server use it. Keep mechanics in data and shared simulation, then expose feedback through events; do not implement separate client damage rules. New maps must supply collision and spawn data and rebuild navigation.
 
-All game visuals and sounds are generated by this project. Third-party libraries retain their own licenses (Three.js MIT; Vite MIT; Playwright Apache-2.0). No downloaded art or audio assets are used.
+Original visuals and sounds are generated by this project. Three.js and Vite use MIT licenses; Playwright uses Apache-2.0; ws uses MIT. No copied game characters, artwork or sound packs are used.
 
-See the [master design document](docs/GAME_DESIGN.md), [prioritized backlog](docs/BACKLOG.md), and [implementation contracts](docs/CONTRACT.md).
+See the [retained project brief](docs/PROJECT_BRIEF.md), [design and mechanics](docs/GAME_DESIGN.md), [remaining work](docs/BACKLOG.md), [validation](docs/TESTING.md), and [expansion interfaces](docs/UPDATE_CONTRACT.md).

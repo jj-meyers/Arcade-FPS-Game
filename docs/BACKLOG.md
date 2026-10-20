@@ -1,43 +1,54 @@
-# Prioritized development backlog
+# Unfug — remaining work
 
-The initial brief's complete playable loop is the milestone. Status labels distinguish implemented systems from validation and planned work. See TESTING.md for evidence; passing deterministic logic does not establish subjective game feel.
+Status is about shipped behavior, not the ambition of the design brief. Automated evidence belongs in [TESTING.md](TESTING.md); it does not establish subjective fun, balance or real-hardware frame rate.
 
-## P0 — first-build release checks
+## Implemented expansion
 
-- **Implemented / automated logic tested:** fixed-step movement, sprint, jump, air control, crouch, wall/box/ramp collision, impulses, hit zones, seven weapons, ammo/reload/switch, five gadgets, three perks, FFA AI, difficulty/personality behavior, navigation, scoring, countdown, respawn, timer/score endings and deterministic replay of inputs.
-- **Implemented / browser validation recorded separately:** full menu/setup/loadout/settings/HUD/pause/results flow, pointer lock, WebGL models/effects, input integration, preference persistence and procedural audio activation.
-- **Needs human playtesting:** sustained gun feel, sound mix through speakers/headphones, visibility during heavy effects, difficulty curve, arsenal balance, readability at various displays and physical mouse sensitivity.
-- **Needs cross-browser testing:** Firefox, Safari, full-screen transitions and device-specific graphics behavior. Chromium integration is the automated baseline.
+- Shared FFA and Team Deathmatch rules, team scores/draws, friendly-fire rejection, assists, safe respawns and zero-bot practice.
+- Six classes with active abilities, three Impulse cores, movement charging, bounded forces and temporary status effects.
+- Twelve weapon mechanics, eight gadgets, three perks, six starting presets and per-gun five-point tuning budgets.
+- Modular visual customization, weapon finishes, live menu preview and browser-local saved builds.
+- Four bot difficulties, class-aware choices, team-aware targets and mixed human/bot actor support.
+- Sprint-crouch sliding, motion reduction, effects/shadow controls and additional HUD feedback.
+- Authoritative anonymous small-room WebSocket server/client, input validation, snapshots, host/rematch/disconnect lifecycle. It requires a persistent server; a public endpoint is not deployed with GitHub Pages.
 
-## P1 — deepen the playable loop
+## P0 — validate and tune the expanded loop with people
 
-1. Human feedback pass on movement, combat cadence, projectile speed and damage falloff. Tune easy difficulty for new players before making hard more lethal.
-2. Elevation-aware AI routes onto the ramp/platform; cover scoring and explicit escape from dangerous fields. Current navigation is conservative and mostly ground-based.
-3. Full swept-sphere projectile collision for grazing edges; robust arbitrary map geometry when new maps require it. Current continuous centerline model handles the graybox and tested fast shots.
-4. Better physical mouse recoil/ADS tuning, optional recoil patterns, accessibility options for bob and motion, rebindable controls and controller support.
-5. Ammo economy/pickups for long survival streaks, optional health pickups, and clearer cause-of-death feedback. Current reserves replenish on respawn; no pickups exist.
-6. Deeper bot gadget tactics and perception of shields/springs; improve personality expression without omniscience.
-7. Mobile-friendly menus already scale, but **touch gameplay is not implemented**. Treat touch controls as an explicit platform decision.
+1. Run several normal-length rounds with novices and experienced FPS players. Compare the preset choices and collect concrete frustration/death examples. Tuning tables are initial values, not a proven competitive metagame.
+2. Check all six classes with all three cores. Look for excessive knockback chains, slow stacking, safe healing/resupply positions and extreme movement/attachment combinations.
+3. Play actual two-to-eight-human rooms under realistic latency, jitter and packet loss. Local automated clients establish communication and authority, not WAN feel.
+4. Listen to the mix through headphones/speakers. Check useful cues under simultaneous weapons and abilities; visual automation cannot judge sound quality.
+5. Validate real GPU rendering at common laptop/desktop resolutions and sustained sessions. CPU simulation benchmarks and software WebGL do not substitute for device measurements.
+6. Confirm Firefox/Safari pointer-lock, audio, fullscreen and reconnect-to-menu behavior. Automated Chromium is the current baseline.
 
-## P2 — future content with user direction
+## P1 — finish partial foundations
 
-- Map design session with the user. Keep the current map simple until then; do not build scenery as a substitute for systems.
-- Smoke/decoys/sticky tools, additional weapon alternate modes and attachment systems. Five current gadgets are the initial varied selection; examples in the brief are inspiration, not all promised equipment.
-- Sliding, more character customization, expanded animation/rigging and audio layers/music.
-- Training targets or a sandbox mode, match mutators, assists and combo feedback; preserve the one reliable FFA mode first.
+- **Latency handling:** authoritative snapshots/interpolation exist; client prediction, reconciliation and server-side hit rewind do not. Design and measure them before competitive multiplayer claims.
+- **Public hosting:** deploy and operate a persistent WSS server with health checks, TLS renewal, origin policy, logging, abuse limits and load tests. Static GitHub Pages alone cannot host it.
+- **Network resilience:** reconnect/rejoin tokens, host-transition edge cases during deployment, deliberate poor-network tests and longer room churn soak tests.
+- **Navigation/tactics:** richer coordination and new-map validation. Height-aware ramp/platform traversal, isolated rooftop drop recovery and danger/cover scoring are implemented; they are not general navigation for arbitrary future maps.
+- **Projectile contact:** full swept-sphere/convex collision for grazing edges and complex geometry. The present radius-clearance centerline sweep is approximate.
+- **Accessibility:** configurable key bindings, controller support, keyboard focus refinement, alternate team palettes and more HUD scaling. Reduced motion and non-color team cues exist; full accessibility support is not complete.
+- **Animation:** richer pose transitions, class reactions and weapon-specific reload motion without delaying input or altering hitboxes. Current animation is procedural and deliberately lightweight.
+- **Performance:** reuse/pool frequent transient objects, profile large effect bursts and room concurrency, measure material/mesh caches over long customization sessions.
 
-## P3 — larger project milestones
+## P2 — deepen variety without inflating scope
 
-- Online multiplayer: authoritative server, transport, synchronization, prediction/reconciliation, lag compensation, security, lobbies and hosting. **Planned; no networking implemented.**
-- Team Deathmatch and other modes with teams, scoring adapters, friendly fire and spawn rules. **Planned.**
-- Downloadable desktop package, platform integration and distribution. **Planned.**
-- Custom maps/editor, new content packs and progression. **Planned.**
+- Better onboarding/training prompts for Impulse, slide, damage sources, tuning budgets and support roles.
+- More informed bot choices around return discs, burst tracking, hostile fields, projectile deflection and coordinated team support.
+- Further class/attachment balance from observed outcomes, not raw damage alone.
+- Optional local match history or challenge goals, only after core reliability. No account progression or unlock economy exists.
+- Additional original cosmetic modules and facial expression presets; keep identical hit volumes and legible team/class markers.
+- Expand the procedural ambient music and event sound palette based on listening feedback. Music has an independent working gain control; voice packs remain absent.
 
-## Intentional exclusions and implementation limits
+## Deliberately deferred
 
-- No elaborate city, terrain, texture library or decorative world assets.
-- No external services, paid assets, account systems or backend.
-- Controlled arcade movement/impulses, not general rigid-body physics or ragdolls.
-- Projectile radius uses forward clearance around centerline sweeps; contact is approximate at grazing angles.
-- Boundary collision continues above the visible wall to retain launched characters.
-- No fabricated benchmark or claim of human playtesting; automation results and remaining checks are explicit.
+- Extra game modes beyond FFA/TDM.
+- Large maps, decorative cities/terrain, complex moving world props or a map editor. Keep the present graybox until a separate map-design pass.
+- Matchmaking, accounts, ranked ladders, persistence, moderation tools and commercial backend operations.
+- Touch gameplay, downloadable desktop packaging and platform distribution.
+- Full rigid-body ragdolls, destructible environments and cinematic animation.
+
+## Maintenance rules
+
+Preserve shared simulation authority; validate all external inputs and saved build data; make temporary effects expire; cap projectiles/fields/particles; never infer real GPU FPS or subjective playtest success from a unit test. Keep current mechanics and remaining work separate in documentation as features change.

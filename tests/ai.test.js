@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AI } from '../src/game/AI.js';
+import { AI, AI_DIFFICULTIES } from '../src/game/AI.js';
 import { Game } from '../src/game/Game.js';
 
 // Keep movement and damage frozen to isolate perception and timing. Real world
@@ -78,4 +78,81 @@ test('hard difficulty reacts sooner than easy difficulty for the same encounter'
     return bot.ai.reactionAt - bot.ai.lastVisibleAt;
   };
   assert.ok(delay('hard') < delay('easy') * 0.5);
+});
+
+test('veteran increases awareness and reaction speed while retaining delayed, imperfect aim', () => {
+  const reaction = difficulty => {
+    const { bot, tick } = encounter(1, difficulty);
+    for (let i = 0; i < 40 && !bot.ai.targetId; i++) tick();
+    return bot.ai.reactionAt - bot.ai.lastVisibleAt;
+  };
+  const veteran = reaction('veteran'), hard = reaction('hard');
+  assert.ok(veteran > .08 && veteran < hard);
+  assert.ok(AI_DIFFICULTIES.veteran.error > 0);
+  assert.ok(AI_DIFFICULTIES.veteran.sight > AI_DIFFICULTIES.hard.sight);
+  assert.ok(AI_DIFFICULTIES.veteran.halfFov > AI_DIFFICULTIES.hard.halfFov);
+});
+
+test('AI never takes control of another human and never acquires a teammate', () => {
+  const { game, bot, tick } = encounter(2, 'veteran');
+  game.match.mode = 'tdm';
+  bot.team = game.player.team = 'a';
+  const human = game.actors[2]; human.team = 'b'; human.isHuman = true;
+  human.pos = { x: 0, y: 0, z: -9 };
+  human.intent = { moveX: .25, moveZ: -.5, sprint: true }; human.yaw = 1.23;
+  const intent = structuredClone(human.intent);
+  tick(90);
+  assert.equal(bot.ai.targetId, human.id);
+  assert.deepEqual(human.intent, intent);
+  assert.equal(human.yaw, 1.23);
+  assert.equal(human.ai.initialized, undefined);
+});
+
+test('twelve bots share bounded perception, decision and path work without starvation', () => {
+  const game = new Game({ seed: 89 });
+  game.start({ botCount: 12, difficulty: 'veteran', duration: 60, scoreLimit: 100 });
+  game.match.state = 'playing';
+  for (let i = 0; i < 600; i++) {
+    game.step(1 / 60);
+    const work = game.ai.frameStats;
+    assert.ok(work.perceptionPasses <= 3);
+    assert.ok(work.decisions <= 2);
+    assert.ok(work.paths <= 2);
+    assert.ok(work.expanded <= 3200);
+    game.events.length = 0;
+  }
+  assert.ok(game.ai.stats.perceptionPasses > 100);
+  assert.ok(game.actors.slice(1).every(actor => actor.ai.initialized && actor.ai.progressAt > 0));
+});
+
+test('a bot follows an elevation-aware route up the real ramp onto the platform', () => {
+  const game = new Game({ seed: 77 });
+  game.start({ botCount: 1, difficulty: 'veteran' });
+  game.match.state = 'playing';
+  game.player.alive = false; game.player.respawnAt = 1000;
+  const bot = game.actors[1];
+  bot.pos = { x: 2, y: 0, z: 0 }; bot.vel = { x: 0, y: 0, z: 0 };
+  game.ai.initialize(bot);
+  bot.ai.roamGoal = { x: 2, y: 2.4, z: 13 };
+  let reached = false;
+  for (let i = 0; i < 180; i++) {
+    game.step(1 / 60);
+    if (bot.pos.y >= 2.39 && bot.pos.z >= 10.5) { reached = true; break; }
+  }
+  assert.ok(reached, `bot did not climb the ramp: ${JSON.stringify(bot.pos)}`);
+});
+
+test('a bot launched onto an isolated cover roof can drop back to its route', () => {
+  const game = new Game({ seed: 78 });
+  game.start({ botCount: 1, difficulty: 'veteran' });
+  game.match.state = 'playing'; game.player.alive = false; game.player.respawnAt = 1000;
+  const bot = game.actors[1];
+  bot.pos = { x: 4.5, y: 1.4, z: 1 }; bot.vel = { x: 0, y: 0, z: 0 }; bot.grounded = true;
+  game.ai.initialize(bot); bot.ai.roamGoal = { x: 20, y: 0, z: 20 };
+  let returned = false;
+  for (let i = 0; i < 300; i++) {
+    game.step(1 / 60);
+    if (bot.grounded && bot.pos.y === 0) { returned = true; break; }
+  }
+  assert.ok(returned, `bot stayed stuck on cover: ${JSON.stringify(bot.pos)}`);
 });

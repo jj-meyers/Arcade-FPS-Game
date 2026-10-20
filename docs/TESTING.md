@@ -1,61 +1,77 @@
-# Validation and playtest notes
+# Unfug — validation and limits
 
-## Executed on this build
+## Executed automated checks
 
-- **43/43 deterministic tests passed**, no skips: `npm test` on Node 24.
-- **11/11 browser scenarios passed**, no page exceptions or console errors: `npm run test:browser` using system Chromium and software WebGL.
-- **Standalone build: 11/11 browser scenarios passed**, including pointer lock and match play, while serving only `chaos-fps.html`. Request monitoring confirmed no separate scripts, styles, fonts or other game resources were loaded. The cloud's managed Chromium blocks `file://` navigation by policy, so direct local-file navigation was not verified in that browser; the same artifact was tested over static HTTP.
-- **Production build passed**: `npm run build`. The Three.js vendor chunk triggers Vite's advisory size warning; it is about 181 kB gzipped. Game code is about 36 kB gzipped and CSS about 10 kB gzipped. There are no external art/audio downloads.
-- **Visual inspection:** 1440×900 menu, arena/HUD, arsenal, setup and results; 390×844 menu. Narrow menus work, but narrow-screen touch gameplay is not implemented.
-- **Additional renderer smoke executed:** all seven weapon models/firing paths, spring/shield/vortex/trap visuals, heavy elimination effects capped to the configured budget, restart cleanup, render scale and disposal. No renderer errors.
-- **Additional AI simulation executed:** 90 seconds with 12 bots on each difficulty. Bots fired, damaged one another, reloaded, used gadgets and respawned; positions remained finite and within the arena.
+Gameplay, customization, physics, AI/navigation and real server/client tests run with `npm test`. Browser integration runs use system Chromium with software WebGL. The counts below describe the expanded build, including the latest assist, spawn, and network-cancellation fixes.
 
-The browser runner builds and serves a production snapshot on port 5174, avoiding development-server hot reload during a scenario. It closes its browser and server on completion. Set `TEST_URL` to use an already running server instead. Set `CHROMIUM_PATH` when the browser executable is elsewhere. Screenshots and `browser-report.json` are written to ignored `test-results/`. On failure, the runner writes diagnostics and a screenshot and returns a failing exit code.
+- **Logic and server suite: 94/94 passed**, zero skips. This includes 11 network tests (10 real WebSocket scenarios plus a mocked-clock client-cancellation regression).
+- **Production build:** Vite build succeeds. Its Three.js vendor chunk emits an advisory size warning; this is not a build error.
+- **Local production browser suite: 14/14 passed**, no page exceptions or console errors. It covers the original loop plus classes, tuning, actual model customization, saved builds, F/X actions, motion settings and TDM.
+- **Network browser suite: 6/6 passed**, zero errors. Two independent browser contexts create/join a real room, move/fire through actual input, receive shared TDM results, transfer hosting/rematch, disconnect and display a rejected-room error. Evidence: `test-results/network-browser.json`.
+- **Standalone artifact: 14/14 browser scenarios passed**, no page exceptions or console errors, with no separate resource requests during bot workflows. `npm run build:standalone` produced the self-contained `dist/unfug.html` (938 KiB), served over local HTTP for this check.
 
-To test the portable artifact, run `npm run build:standalone`, serve `dist/` with a static server, then run `STANDALONE=1 TEST_URL=http://127.0.0.1:5175/chaos-fps.html npm run test:browser` (adjust the port). The additional standalone assertion rejects any request for a separate resource. On an unmanaged browser, `TEST_URL` can also be a `file:///.../chaos-fps.html` URL.
+Generated reports and screenshots live in ignored `test-results/`. They contain measured results, not credentials. This document records the useful summary for future checkouts.
 
-Preview diagnosis: the live development server rendered and started correctly in Chromium. A sandboxed iframe without `allow-pointer-lock` reproduced a start failure; the same frame with that capability worked. The source `index.html` now shows an explicit startup fallback instead of a blank page when its module cannot load. Opening the source HTML outside Vite is not equivalent to running the built game.
+## CPU simulation benchmark
 
-## Deterministic coverage
+The final `node tests/benchmark.mjs` pass used Node **24.19.0** on a shared Linux x64 host (AMD EPYC 9V74, five exposed logical CPUs), fixed seed **2031**, **12 bots** (two of each class), FFA, 60 Hz, a **90-second match plus three-second countdown**, and score limit 100. Each case completed 5,580 simulation steps with finite bounded state. Construction was excluded.
 
-| Suite | Executed checks |
+| Difficulty | Whole run elapsed | p95 Game.step | p99 Game.step | Worst step | Eliminations | Peak projectiles / fields |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Easy | 1,844 ms | 0.696 ms | 3.082 ms | 9.371 ms | 86 | 16 / 10 |
+| Normal | 1,797 ms | 0.615 ms | 3.882 ms | 17.300 ms | 125 | 18 / 14 |
+| Hard | 1,690 ms | 0.622 ms | 3.512 ms | 8.682 ms | 160 | 22 / 14 |
+| Veteran | 1,681 ms | 0.607 ms | 3.623 ms | 10.619 ms | 166 | 19 / 18 |
+
+All six class abilities appeared at every difficulty, along with gadgets and Impulse. Whole-run elapsed time includes assertion/event accounting; per-step timings isolate `Game.step`. CPU usage and individual event counts are in `test-results/benchmark.json`. Occasional long steps are recorded rather than hidden by averages. Shared-host scheduling, garbage collection and differing engagements affect these numbers.
+
+A separate instrumented AI pass (seed 123, 120 simulated seconds) observed at most three perception passes, two tactical decisions, two paths and 2,984 expanded path nodes per active tick, below the 3,200-node cap. Permanent tests enforce these work budgets. Its raw historical report is `test-results/ai-benchmark-final.json`; the table above is the final full-simulation run after spawn/assist fixes.
+
+Neither pass measures rendering FPS, GPU speed, WAN latency or human responsiveness. The numbers are observations, not a minimum hardware promise.
+
+## Permanent regression coverage
+
+| Area | Assertions |
 | --- | --- |
-| Physics | 30/60/120 Hz movement consistency; diagonal normalization; sprint/crouch speed; cover sliding; thin-cover/boundary collision; jump and single landing; ramp-to-platform walk; steep ramp side rejection; exact slope ray; ray distance limits |
-| Game | Countdown; yaw-relative movement; pause; body/head hits; cover occlusion; damage and kill attribution; no double kills; self-death; safe respawn and protection; perk impulse bounds; immediate score ending; timer winner/restart; invalid equipment fallback; full FFA; reproducible seeded simulation |
-| Combat | Cadence; ammo/reload reserves; quick perk; switch cancellation; dead actors; swept fast projectile; self-ignore; ricochet damage; blast cover; shield hitscan/projectile/blast absorption and owner fire; pull/push; spring cooldown; vortex curves/pull; trap arming; grenade fuse; attacking ends spawn protection |
-| Navigation / AI | Obstacle clearance; paths around cover; sealed barriers; thin-wall/corner smoothing; blocked-footprint recovery; seeded roaming; reaction latency; no hidden-position updates or shots through walls; memory expiration; bot-vs-bot targeting; difficulty reaction differences |
+| Movement | 30/60/120 Hz consistency; normalized diagonals; sprint/crouch; cover sliding; thin-wall/boundary anti-tunneling; jump/landing; ramp/platform traversal; slide momentum/decay/retrigger/cancellation |
+| Rays | Head/body distinction, nearest world surface, range limits, exact ramp slope and line-of-sight obstruction |
+| Match lifecycle | Countdown, pause, scoring/deaths, single elimination, invulnerability, respawn equipment/safe position/facing, time/score endings, restart, deterministic seeded FFA |
+| Team rules | Team assignment/composition, friendly damage/impulse rejection, hostile scoring, assists, team win and timer draw |
+| Customization | Legacy migration, malformed IDs, independent tuning budgets, true weapon stat changes/tradeoffs, active weapon handling, equal cosmetic stats/hitboxes |
+| Impulse/classes | Movement and hostile force charge caps; pause/teleport/self/team farming rejection; cone/LOS/team rules; three distinct cores; projectile owner retention/speed bounds; brace expiry; healing/resupply team rules; dash collision and airborne launch |
+| Weapons/gadgets | Cadence/reserves/reload/switch; swept hits/ricochet; cover-blocked blasts; shield hitscan/projectile/blast behavior; pull/push; springs/vortex/traps/fuses; burst timing/cancel; spin-up/reset; temporary glue slow; returning-disc legs; chain LOS/team exclusion; speed/slow fields; repulsor deflection; bounded cluster children and entity caps |
+| AI/navigation | Fair delayed/imperfect aim, hidden-position memory expiration, no shots through walls, bot-vs-bot combat, veteran behavior, human actor exclusion, team targeting, shared work budgets, no starvation, clearance/path smoothing, ramp/platform route, isolated rooftop drop |
+| Networking | Real multiple clients and shared authority, movement/combat/scores, TDM, host transfer/room cleanup, payload/rate/input/loadout validation, join limits, stale-input neutralization, rejected connections and socket cleanup |
 
-## Browser scenarios
+## Browser workflow coverage
 
-1. WebGL initializes, scene renders, lobby loads, native Tab focuses menu buttons.
-2. Seven weapon choices, tactical/lethal/perk options and custom selection survive reload.
-3. FOV, sensitivity, graphics quality, crosshair and render scale settings persist; rendering resolution and shadow state change.
-4. Match configuration, an actual start-button click, pointer lock, countdown and HUD.
-5. Actual keyboard movement/sprint/jump and relative mouse events reach the simulation.
-6. Actual mouse firing kills a deliberately positioned target; real R/2 input reloads and switches, with matching HUD.
-7. Real Q/E input deploys equipment and starts cooldowns; held Tab shows and hides the scoreboard.
-8. Injected lethal damage attributes a death, then simulation respawns the player and restores visible health.
-9. Escape pauses the simulation clock; clicking Resume recaptures the mouse.
-10. Timer results, replay, return to lobby, and a complete accelerated 12-bot hard match with bounded effects and valid positions.
-11. Narrow layout loads, and deliberately corrupted local storage falls back safely.
+The local suite serves a fixed production snapshot so live source edits cannot trigger HMR mid-scenario. It checks actual WebGL draw calls and native menu Tab focus, all twelve weapon cards, gadget/perk/core choices, six classes, per-gun tuning budgets, live model/color/class preview updates, saved builds and reload persistence.
 
-Combat and lifecycle fixtures deliberately place actors, shorten timers or advance fixed simulation steps to make assertions reliable. These are integration checks, not a claim that an automated agent played a skillful uninterrupted match. Sound-generation code executes in these browser runs, but the sound mix was not evaluated by human listening. Software WebGL validates functionality, not real GPU frame-rate performance.
+It then checks settings against actual renderer/input state; native start-button pointer lock and countdown; keyboard movement/sprint/jump and relative mouse motion; real mouse firing/reload/switch; Q/E deployment; F ability and X Impulse; scoreboards; death and a forced multi-step main-loop respawn; Escape/resume; results/replay; an accelerated twelve-bot veteran round; team selection/HUD/draw results; and narrow layout/corrupt-storage fallback.
 
-## Manual checks still valuable
+Some combat actors, charge values and timers are deliberate deterministic fixtures. Automated input is genuine, but this is not a claim of uninterrupted skilled human play. The online suite uses a real server and independent clients, not disconnected simulations. See its report for exact completed scenarios.
 
-1. Run a normal three-minute, five-bot match. Walk, strafe, sprint and jump around every cover object; climb the ramp, jump off the platform, crouch behind low cover. Check mouse feel and perceived responsiveness.
-2. Try each preset. Fire downward while airborne with the shotgun, bank rubber rounds around cover, launch a rival then switch weapons, and compare magnet pull versus RMB+LMB push.
-3. Deploy every gadget; use a spring pad to escape a grenade, fire from inside a shield, and throw explosives near a vortex. Confirm the visual cues are understandable.
-4. Listen on headphones/speakers for shot differentiation, recoil/reload cues, hit confirmation, deaths and match outcomes. Adjust gains and shake.
-5. Compare easy, normal and hard; 1, 5 and 12 bots; score-limit and timer endings. Look for unfair aim, trapped bots or repetitive tactics.
-6. Alt-tab during play, Esc/resume repeatedly, change settings while paused, then restart twice. Check fullscreen and mouse recapture in the intended browser.
-7. Test Firefox/Safari, a low-power integrated GPU and a high-refresh display. Measure actual performance before promising a hardware frame-rate target.
+## Commands
 
-## Known limitations
+```sh
+npm test
+npm run build
+npm run test:browser
+npm run test:network
+npm run test:network:browser
+node tests/benchmark.mjs
+```
 
-- Bots' ground navigation avoids the ramp instead of planning elevated routes.
-- Projectile collision is a continuous centerline approximation with radius clearance, not full swept-sphere collision at grazing edges.
-- Long-lived players can exhaust finite ammo reserves; resupply currently occurs on respawn.
-- Boundary collision continues above the visible wall to retain launched actors.
-- No touch/controller controls, online networking or desktop packaging.
-- Human game-feel/balance assessment, audio audition, real-GPU benchmarks and cross-browser validation remain outstanding. None are claimed as completed.
+Set `CHROMIUM_PATH` when system Chromium is elsewhere. `TEST_URL` points the local browser runner at an already serving build. For the portable artifact, build it, serve `dist/`, then run `STANDALONE=1 TEST_URL=http://127.0.0.1:5175/unfug.html npm run test:browser`. Standalone checks reject separate resource requests during bot workflows. Network tests intentionally contact the configured room server.
+
+The managed browser in this environment blocks `file://` navigation. Static HTTP testing of the same portable HTML is available; it does not establish direct-file behavior in every browser. Sandboxed frames require `allow-pointer-lock`, while top-level hosted pages avoid that embedding restriction.
+
+## Remaining manual/device testing
+
+- Human movement/gun feel and full-length rounds with different skill levels.
+- Weapon/class/core balance, support stacking, chain readability and sensory overload.
+- Listening to the actual synthesized audio/music mix.
+- Real laptop/mobile-class GPUs, sustained rendering, thermal throttling and long customization sessions.
+- Firefox/Safari, fullscreen transitions and browser-specific input behavior.
+- Multiple remote humans with latency, jitter, disconnects and abuse/load testing. There is no public hosted room endpoint and no prediction, hit rewind or reconnect recovery.
+- Accessibility review. Fixed keyboard controls and desktop mouse input remain required; no controller/touch gameplay.

@@ -5,13 +5,16 @@ import { DEFAULT_LOADOUT, GADGETS, WEAPONS } from '../src/data/catalog.js';
 
 function arena(primary = 'fizz', extras = {}) {
   const game = new Game({ seed: 717 });
-  game.start({ botCount: 1, scoreLimit: 100 }, { ...DEFAULT_LOADOUT, primary, perk: 'quick', ...extras });
+  game.start({ botCount: 1, scoreLimit: 100 }, { ...DEFAULT_LOADOUT, primary, perk: 'quick', classId: 'medic', ...extras });
   game.time = 10;
   game.match.state = 'playing';
   game.map = { size: 56, obstacles: [], ramps: [], spawns: [], pads: [] };
   game.ai.update = () => {};
   const player = game.player;
   const target = game.actors[1];
+  // Isolate weapon mechanics from randomized class/perk impulse resistance.
+  target.equipment.classId = 'medic'; target.classId = 'medic';
+  target.equipment.perk = 'quick'; game.combat.equip(target);
   player.pos = { x: 0, y: 0, z: 0 };
   target.pos = { x: 0, y: 0, z: -10 };
   player.invulnerableUntil = target.invulnerableUntil = 0;

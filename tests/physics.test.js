@@ -144,3 +144,39 @@ test('world rays select the nearest surface and obey their maximum range', () =>
   assert.equal(floor.obstacle.id, 'floor');
   near(floor.point.y, 0);
 });
+
+test('slide requires sprint momentum, decays, and cannot repeat while crouch stays held', () => {
+  const body = actor(), events = [];
+  body.intent = { moveX: 1, sprint: true };
+  moveFor(body, .4, flatMap(), 60, events);
+  const sprintSpeed = body.vel.x;
+  body.intent.crouch = true;
+  moveActor(body, 1 / 60, flatMap(), {}, event => events.push(event));
+  assert.ok(body.slideRemaining > .5);
+  assert.ok(body.vel.x > 8 && body.vel.x <= sprintSpeed);
+  assert.equal(body.height, 1.18);
+  moveFor(body, 2, flatMap(), 60, events);
+  assert.equal(body.slideRemaining, 0);
+  assert.equal(events.filter(event => event.type === 'slide').length, 1);
+  near(body.vel.x, 3.6);
+  body.intent.crouch = false;
+  body.intent.moveX = -1;
+  moveFor(body, .5, flatMap(), 60, events);
+  body.intent.crouch = true;
+  moveActor(body, 1 / 60, flatMap(), {}, event => events.push(event));
+  assert.equal(events.filter(event => event.type === 'slide').length, 2);
+});
+
+test('slides retain thin-wall collision and can be cancelled with a jump', () => {
+  const box = { id: 'slide-stop', x: 2, y: 0, z: 0, w: .2, h: 3, d: 5 };
+  const body = actor(), map = flatMap([box]);
+  body.vel.x = 12;
+  body.intent = { moveX: 1, sprint: true, crouch: true };
+  moveFor(body, .3, map);
+  assert.ok(body.pos.x <= box.x - box.w / 2 - body.radius + 1e-6);
+  body.intent.jump = true;
+  moveActor(body, 1 / 60, map);
+  assert.equal(body.slideRemaining, 0);
+  assert.equal(body.grounded, false);
+  assert.ok(body.vel.y > 0);
+});

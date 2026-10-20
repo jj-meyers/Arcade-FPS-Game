@@ -10,7 +10,7 @@ export class Input {
       if (['Space','KeyW','KeyA','KeyS','KeyD','ShiftLeft','ShiftRight','ControlLeft','ControlRight'].includes(e.code)) e.preventDefault();
       this.keys.add(e.code);
       if (!e.repeat) {
-        const actions = { Space: 'jump', KeyR: 'reload', KeyQ: 'tactical', KeyE: 'lethal' };
+        const actions = { Space: 'jump', KeyR: 'reload', KeyQ: 'tactical', KeyE: 'lethal', KeyF: 'ability', KeyX: 'impulse' };
         if (actions[e.code]) this.edges[actions[e.code]] = true;
         if (e.code === 'Digit1') this.edges.switchSlot = 0;
         if (e.code === 'Digit2') this.edges.switchSlot = 1;
@@ -20,7 +20,7 @@ export class Input {
     document.addEventListener('mousemove', e => {
       if (!this.locked) return;
       const factor = .0021 * (Number(this.settings.sensitivity) || 1) * (this.buttons.has(2) ? .66 : 1);
-      this.yaw -= e.movementX * factor; this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch - e.movementY * factor));
+      this.yaw -= e.movementX * factor; this.pitch = Math.max(-1.48, Math.min(1.48, this.pitch - e.movementY * factor * (this.settings.invertY ? -1 : 1)));
     });
     document.addEventListener('mousedown', e => { if (this.locked) this.buttons.add(e.button); });
     document.addEventListener('mouseup', e => this.buttons.delete(e.button));

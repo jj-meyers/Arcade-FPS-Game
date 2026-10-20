@@ -13,14 +13,30 @@ export function groundHeight(map, x, z, maxY = Infinity) {
 
 export function moveActor(actor, dt, map, perk = {}, emit = () => {}) {
   const intent = actor.intent || {}, prevGrounded = actor.grounded;
-  const crouching = !!intent.crouch && actor.grounded;
+  actor.slideCooldown = Math.max(0, (actor.slideCooldown || 0) - dt);
+  actor.slideRemaining = Math.max(0, (actor.slideRemaining || 0) - dt);
+  if (intent.crouch && !actor.wasCrouching && intent.sprint && actor.grounded &&
+      Math.hypot(actor.vel.x, actor.vel.z) > 5 && actor.slideCooldown === 0) {
+    actor.slideRemaining = .62; actor.slideCooldown = 1.15;
+    emit({ type: 'slide', actorId: actor.id, point: { ...actor.pos } });
+  }
+  actor.wasCrouching = !!intent.crouch;
+  if (intent.jump || !actor.grounded) actor.slideRemaining = 0;
+  const sliding = actor.slideRemaining > 0;
+  const crouching = (!!intent.crouch || sliding) && actor.grounded;
   actor.height = crouching ? 1.18 : 1.8;
   const speed = (crouching ? 3.6 : intent.sprint ? 10 : 6.5) * (perk.moveSpeed || 1);
   let mx = intent.moveX || 0, mz = intent.moveZ || 0;
   const m = Math.hypot(mx, mz); if (m > 1) { mx /= m; mz /= m; }
-  const accel = actor.grounded ? (m ? 40 : 28) : 10;
+  const accel = actor.grounded ? (m ? 40 : 28) : 10 * (perk.airControl || 1);
   const change = (target, current) => current + clamp(target - current, -accel * dt, accel * dt);
-  actor.vel.x = change(mx * speed, actor.vel.x); actor.vel.z = change(mz * speed, actor.vel.z);
+  if (sliding) {
+    const friction = Math.max(0, 1 - dt * 1.35);
+    actor.vel.x = actor.vel.x * friction + mx * dt * 2;
+    actor.vel.z = actor.vel.z * friction + mz * dt * 2;
+  } else {
+    actor.vel.x = change(mx * speed, actor.vel.x); actor.vel.z = change(mz * speed, actor.vel.z);
+  }
   if (intent.jump && actor.grounded) {
     actor.vel.y = 9 * (perk.jump || 1); actor.grounded = false;
     emit({ type: 'jump', actorId: actor.id, point: { ...actor.pos } });

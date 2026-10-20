@@ -1,13 +1,18 @@
 // Static ground navigation. Geometry is inflated by the actor radius, so paths
 // remain useful to the physical character instead of skimming wall edges.
 export class NavigationGrid {
-  constructor(map, { cellSize = 1.4, clearance = 0.62 } = {}) {
+  constructor(map, { cellSize = 1.4, clearance = 0.62, traverseRamps = false } = {}) {
     this.map = map;
     this.size = map.size || 56;
     this.count = Math.ceil(this.size / cellSize);
     this.cellSize = this.size / this.count;
     this.half = this.size / 2;
     this.clearance = clearance;
+    this.traverseRamps = traverseRamps;
+    this.obstacles = map.obstacles || [];
+    this.ramps = map.ramps || [];
+    this.lastExpanded = 0;
+    this.positions = new Array(this.count * this.count);
     this.rects = [...(map.obstacles || []), ...(map.ramps || [])]
       .filter(box => box.w > 0 && box.d > 0)
       .map(box => ({
@@ -42,24 +47,73 @@ export class NavigationGrid {
         }
       }
     }
+    // Roaming may choose a ramp/platform reached from the ground, but never an
+    // isolated rooftop that would require an unavailable jump or teleport.
+    this.roamable = this.free;
+    if (traverseRamps) {
+      const reachable = new Uint8Array(this.walkable.length);
+      const queue = this.free.filter(id => this.point(id).y < 0.05);
+      for (const id of queue) reachable[id] = 1;
+      for (let cursor = 0; cursor < queue.length; cursor++) for (const edge of this.neighbors[queue[cursor]] || []) {
+        if (!reachable[edge.id]) { reachable[edge.id] = 1; queue.push(edge.id); }
+      }
+      this.roamable = queue;
+    }
   }
 
   point(id) {
-    return {
-      x: (id % this.count + 0.5) * this.cellSize - this.half,
-      y: 0,
-      z: (Math.floor(id / this.count) + 0.5) * this.cellSize - this.half,
-    };
+    if (this.positions[id]) return this.positions[id];
+    const x = (id % this.count + 0.5) * this.cellSize - this.half;
+    const z = (Math.floor(id / this.count) + 0.5) * this.cellSize - this.half;
+    return this.positions[id] = { x, y: this.surfaceHeight(x, z), z };
+  }
+
+  surfaceHeight(x, z) {
+    if (!this.traverseRamps) return 0;
+    let height = 0;
+    for (const box of this.obstacles) if (Math.abs(x - box.x) <= box.w / 2 && Math.abs(z - box.z) <= box.d / 2) height = Math.max(height, (box.y || 0) + box.h);
+    for (const ramp of this.ramps) if (Math.abs(x - ramp.x) <= ramp.w / 2 && Math.abs(z - ramp.z) <= ramp.d / 2) {
+      height = Math.max(height, (z - ramp.z + ramp.d / 2) / ramp.d * ramp.h);
+    }
+    return height;
   }
 
   isWalkable(x, z) {
     const edge = this.half - this.clearance;
-    return Number.isFinite(x) && Number.isFinite(z) && Math.abs(x) < edge && Math.abs(z) < edge &&
-      !this.rects.some(box => x >= box.minX && x <= box.maxX && z >= box.minZ && z <= box.maxZ);
+    if (!Number.isFinite(x) || !Number.isFinite(z) || Math.abs(x) >= edge || Math.abs(z) >= edge) return false;
+    if (!this.traverseRamps) return !this.rects.some(box => x >= box.minX && x <= box.maxX && z >= box.minZ && z <= box.maxZ);
+    const height = this.surfaceHeight(x, z);
+    for (const box of this.obstacles) {
+      if (Math.abs(x - box.x) < box.w / 2 + this.clearance && Math.abs(z - box.z) < box.d / 2 + this.clearance && height < (box.y || 0) + box.h - 0.26) return false;
+    }
+    for (const ramp of this.ramps) {
+      // Stay away from raised ramp side edges. The low entrance remains open.
+      const progress = Math.max(0, Math.min(1, (z - ramp.z + ramp.d / 2) / ramp.d));
+      if (Math.abs(x - ramp.x) < ramp.w / 2 + this.clearance && Math.abs(z - ramp.z) < ramp.d / 2 + this.clearance) {
+        if (height < progress * ramp.h - 0.04) return false;
+        if (progress * ramp.h > 0.28 && Math.abs(x - ramp.x) > ramp.w / 2 - this.clearance && height <= progress * ramp.h + 0.04) return false;
+      }
+    }
+    return true;
   }
 
   segmentClear(from, to) {
     if (!this.isWalkable(from.x, from.z) || !this.isWalkable(to.x, to.z)) return false;
+    if (this.traverseRamps) {
+      const distance = Math.hypot(to.x - from.x, to.z - from.z);
+      const steps = Math.max(1, Math.ceil(distance / 0.24));
+      let previousHeight = this.surfaceHeight(from.x, from.z);
+      for (let i = 1; i <= steps; i++) {
+        const x = from.x + (to.x - from.x) * i / steps;
+        const z = from.z + (to.z - from.z) * i / steps;
+        if (!this.isWalkable(x, z)) return false;
+        const height = this.surfaceHeight(x, z);
+        // Physics allows low steps and downhill drops, not climbing box faces.
+        if (height - previousHeight > 0.26 || previousHeight - height > 3) return false;
+        previousHeight = height;
+      }
+      return true;
+    }
     return !this.rects.some(box => intersectsRectangle(from, to, box));
   }
 
@@ -77,8 +131,20 @@ export class NavigationGrid {
     return best;
   }
 
-  findPath(from, to) {
-    if (this.segmentClear(from, to)) return [{ x: to.x, y: 0, z: to.z }];
+  nearestGroundPoint(from) {
+    let best = null, distance = Infinity;
+    for (const id of this.free) {
+      const point = this.point(id);
+      if (point.y > .1) continue;
+      const candidate = (point.x - from.x) ** 2 + (point.z - from.z) ** 2;
+      if (candidate < distance) { distance = candidate; best = point; }
+    }
+    return best ? { ...best } : null;
+  }
+
+  findPath(from, to, { maxExpanded = 1600 } = {}) {
+    this.lastExpanded = 0;
+    if (this.segmentClear(from, to)) return [{ x: to.x, y: this.surfaceHeight(to.x, to.z), z: to.z }];
     const start = this.nearestId(from);
     const goal = this.nearestId(to);
     if (start < 0 || goal < 0) return [];
@@ -98,11 +164,13 @@ export class NavigationGrid {
     while (queue.length) {
       const current = queue.pop();
       if (closed[current]) continue;
+      if (this.lastExpanded >= maxExpanded) return [];
+      this.lastExpanded++;
       if (current === goal) {
         const route = [];
         for (let id = current; id >= 0; id = previous[id]) route.push(this.point(id));
         route.reverse();
-        if (this.segmentClear(route[route.length - 1], to)) route.push({ x: to.x, y: 0, z: to.z });
+        if (this.segmentClear(route[route.length - 1], to)) route.push({ x: to.x, y: this.surfaceHeight(to.x, to.z), z: to.z });
         return this.smooth(from, route);
       }
       closed[current] = 1;
@@ -134,10 +202,10 @@ export class NavigationGrid {
   }
 
   randomPoint(rng = Math.random, origin = null, minDistance = 6) {
-    if (!this.free.length) return { x: 0, y: 0, z: 0 };
+    if (!this.roamable.length) return { x: 0, y: 0, z: 0 };
     let point;
     for (let attempt = 0; attempt < 24; attempt++) {
-      point = this.point(this.free[Math.floor(rng() * this.free.length) % this.free.length]);
+      point = this.point(this.roamable[Math.floor(rng() * this.roamable.length) % this.roamable.length]);
       if (!origin || Math.hypot(point.x - origin.x, point.z - origin.z) >= minDistance) return point;
     }
     return point;

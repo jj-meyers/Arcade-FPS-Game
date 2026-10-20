@@ -1,13 +1,33 @@
-# UI integration
+# Unfug UI
 
-`UI.js` exports the named and default `UI` class. Import `style.css` once from the application entry point. Mount with `new UI(root, callbacks)` above the game canvas.
+`UI.js` exports the named and default `UI` class. Import `style.css` once and mount `new UI(root, callbacks)` above the canvas. The UI owns presentation and validated local preferences; the application owns simulation, audio, pointer lock, renderer settings, and networking.
 
-Callbacks are `onStart(config, loadout)`, `onPause()`, `onResume()`, `onMenu()`, `onSettings(settings)`, `onFullscreen()`, and `onRestart()`. Starting and resuming call the relevant callback synchronously inside the button click, preserving browser user activation for pointer lock and audio. Game pause state, pointer lock, audio, and rendering remain the application entry point's responsibility; the UI does not advance simulation.
+## Application callbacks
 
-Public presentation methods are `showMenu()`, `showPause()`, `hidePause()`, `showResults(game)`, `showScoreboard(show, game)`, `update(game, dt)`, `handleEvents(events, game)`, `notify(message)`, `startGame()`, and `dispose()`. `isOverlayOpen` reports menu, pause, or results visibility. `settings`, `loadout`, and `matchConfig` hold the user's current preferences.
+- `onStart(config, loadout)`, `onResume()`, `onPause()`, `onMenu()`, `onRestart()`, `onFullscreen()`.
+- `onSettings(settings)` applies changes immediately.
+- `onPreviewLoadout(loadout)` updates the menu render preview. Editing the secondary weapon sends a cloned display loadout with weapon, modifier, and finish slots swapped; saved equipment is unchanged.
+- `onNetwork({action, url, code, name, config, loadout})` connects with action `create` or `join`. An automatic team selection omits `config.playerTeam` so the server assigns a team. Explicit selection supplies `a` or `b`.
+- `onNetworkStart()` requests host start/rematch. `onNetworkLeave()` disconnects; `onDisconnect()` is a compatible fallback.
 
-Preferences use `chaos-fps:preferences:v1` in local storage. Every value is validated against the catalogs or supported numeric limits; corrupt JSON, invalid IDs, incorrect gadget slots, and inaccessible storage fall back safely. Settings changes call `onSettings` immediately. Loadout changes during pause apply on the next match. Scoreboards defer to `game.rankings()` to preserve the match's tie-breaking rules.
+Start/resume callbacks run synchronously inside button handlers to preserve browser user activation for pointer lock. UI code never simulates gameplay or pauses a remote match.
 
-Menus use local CSS, original inline weapon art, and inline SVG symbols. They require no downloaded fonts or image assets. Native buttons, labels, inputs, focus indicators, and semantic score tables support keyboard navigation. Gameplay still requires a mouse and keyboard; responsive menu layout does not imply touch gameplay support.
+## Public presentation API
 
-Verified in headless system Chromium with Playwright: menu and settings interactions, equipment selection, preference persistence and corrupt-value recovery, match customization, actual click-triggered pointer lock, pause → settings → resume, 13-player results, restart, and return to lobby. Visual checks covered 1440×900 and 390×844 layouts with no horizontal overflow. Root integration tests cover the simulation and full match behavior separately.
+`showMenu()`, `showPause()`, `hidePause()`, `showResults(game)`, `showScoreboard(show, game)`, `update(game, dt)`, `handleEvents(events, game)`, `notify(message)`, `startGame()`, and `dispose()` retain the original API.
+
+`beginNetworkMatch()` hides overlays and displays the HUD without starting a local simulation. `showLobby({code, players, isHost, status})` displays the authoritative room roster. `setNetworkStatus(message, isError = false)` presents connection progress/errors. `isNetworked` changes pause wording and available match actions; `lobbyState` supplies host/rematch state.
+
+`settings`, `loadout`, `matchConfig`, and `savedLoadouts` hold current preferences. `isOverlayOpen` reports menu/pause/results visibility. Scoreboards use `game.rankings()`, include assists, and show team shapes as well as colors. Tied team matches display a draw.
+
+## Preferences and customization
+
+Storage key `unfug:preferences:v2` migrates the old `chaos-fps:preferences:v1` record. Every loadout passes through shared `normalizeLoadout`; numeric settings, booleans, catalog IDs, match mode, classes, and up to six saved builds are validated. Corrupt JSON or blocked storage falls back safely. No secret or room code is persisted.
+
+Weapon tuning enforces the shared five-point budget independently per weapon. Character and tuning screens update the actual renderer preview while their controls remain open. Online equipment is chosen when creating/joining a room; changes require leaving and rejoining.
+
+The menus use CSS and original inline SVG art, without external fonts/images. Settings expose actual master/SFX/music volume, inversion, graphics/effects/shadows, reduced motion, shake, render scale, FOV, and crosshair controls. Native labels, focus indicators, buttons, and semantic tables support keyboard navigation. Responsive menus do not imply touch gameplay support.
+
+## Stable browser-test selectors
+
+Existing `data-action`, `data-nav`, `data-slot`, `data-equip`, `data-setting`, and `data-match` selectors remain. New controls use `data-armory-tab`, `data-class`, `data-tuning-gun`, `data-mod-slot` + `data-mod-gun`, `data-finish`, `data-cosmetic`, `data-save-loadout`, `data-load-loadout`, `data-loadout-name`, `data-bot-class`, and `data-network`.

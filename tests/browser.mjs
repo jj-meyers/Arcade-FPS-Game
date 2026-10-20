@@ -42,7 +42,7 @@ try {
   await page.waitForFunction(() => !!window.__CHAOS__);
 
   await check('WebGL scene and complete main menu initialize', async () => {
-    assert.equal(await page.locator('.hero h1').innerText().then(s=>s.includes('CHAOS')), true);
+    assert.equal(await page.locator('.hero h1').innerText().then(s=>s.includes('UNFUG')), true);
     const info = await page.evaluate(() => ({ actors: __CHAOS__.game.actors.length, canvas: document.querySelector('canvas').width, renderer: __CHAOS__.renderer.renderer.info.render.calls }));
     assert.ok(info.actors > 1 && info.canvas > 0 && info.renderer > 0);
     await page.keyboard.press('Tab');
@@ -52,12 +52,12 @@ try {
 
   await check('All arsenal choices render; custom loadout survives reload', async () => {
     await page.locator('[data-nav="loadout"]').click();
-    assert.equal(await page.locator('[data-equip]').count(), 7);
+    assert.equal(await page.locator('[data-equip]').count(), 12);
     await page.locator('[data-equip="rail"]').click();
     await page.locator('[data-slot="tactical"]').click();
-    assert.equal(await page.locator('[data-equip]').count(), 3);
+    assert.equal(await page.locator('[data-equip]').count(), 5);
     await page.locator('[data-slot="lethal"]').click();
-    assert.equal(await page.locator('[data-equip]').count(), 2);
+    assert.equal(await page.locator('[data-equip]').count(), 3);
     await page.locator('[data-slot="perk"]').click();
     assert.equal(await page.locator('[data-equip]').count(), 3);
     await page.locator('[data-slot="primary"]').click();
@@ -66,16 +66,68 @@ try {
     assert.equal(await page.evaluate(() => __CHAOS__.ui.loadout.primary), 'rail');
   });
 
+  await check('Class, Impulse, gun tuning, cosmetics and saved builds change the actual preview and persist', async () => {
+    await page.locator('[data-nav="loadout"]').click();
+    await page.locator('[data-slot="impulseCore"]').click();
+    assert.equal(await page.locator('[data-equip]').count(), 3);
+    await page.locator('[data-equip="lift"]').click();
+    await page.locator('[data-armory-tab="classes"]').click();
+    assert.equal(await page.locator('[data-class]').count(), 6);
+    await page.locator('[data-class="acrobat"]').click();
+    await page.locator('[data-armory-tab="tuning"]').click();
+    await page.locator('[data-mod-slot="barrel"]').selectOption('precision');
+    await page.locator('[data-mod-slot="magazine"]').selectOption('extended');
+    assert.equal(await page.locator('[data-mod-slot="handling"] option[value="rapid"]').evaluate(option => option.disabled), true);
+    await page.locator('[data-finish="primary"]').selectOption('teal');
+    assert.match(await page.locator('.budget-label').innerText(), /4 \/ 5/);
+    const oldHero = await page.evaluate(() => __CHAOS__.renderer.hero.uuid);
+    await page.locator('[data-nav="character"]').click();
+    for (const [slot,value] of Object.entries({bodyColor:'coral',accentColor:'violet',hat:'crown',face:'visor',back:'coil',pattern:'dots'})) {
+      await page.locator(`[data-cosmetic="${slot}"]`).selectOption(value);
+    }
+    await page.waitForFunction(old => {
+      const {renderer,ui}=__CHAOS__, e=ui.loadout;
+      return renderer.hero.uuid!==old && renderer.heroSignature===JSON.stringify([e.classId,e.cosmetics,e.primary,e.mods.primary,e.finishes.primary]);
+    }, oldHero);
+    const preview = await page.evaluate(() => ({
+      signature: __CHAOS__.renderer.heroSignature,
+      bodyColor: __CHAOS__.renderer.hero.userData.body.material.color.getHexString(),
+      classVisible: !!__CHAOS__.renderer.hero.getObjectByName('class-acrobat'),
+      weapon: __CHAOS__.renderer.hero.userData.weaponId,
+    }));
+    assert.equal(preview.bodyColor, 'ff7387'); assert.equal(preview.classVisible,true); assert.equal(preview.weapon,'rail');
+    assert.ok(preview.signature.includes('crown') && preview.signature.includes('teal'));
+    await page.screenshot({ path: `${output}/character.png` });
+    await page.locator('[data-nav="loadout"]').click();
+    await page.locator('[data-armory-tab="saved"]').click();
+    assert.equal(await page.locator('[data-save-loadout]').count(),6);
+    await page.locator('[data-loadout-name="0"]').fill('Air tester');
+    await page.locator('[data-save-loadout="0"]').click();
+    await page.locator('[data-armory-tab="classes"]').click();
+    await page.locator('[data-class="bulwark"]').click();
+    await page.locator('[data-armory-tab="saved"]').click();
+    await page.locator('[data-load-loadout="0"]').click();
+    await page.reload(); await page.waitForFunction(() => !!window.__CHAOS__);
+    const saved = await page.evaluate(() => ({ build:__CHAOS__.ui.loadout, slot:__CHAOS__.ui.savedLoadouts[0] }));
+    assert.equal(saved.build.classId,'acrobat'); assert.equal(saved.build.impulseCore,'lift');
+    assert.equal(saved.build.mods.primary.magazine,'extended'); assert.equal(saved.build.cosmetics.hat,'crown');
+    assert.equal(saved.slot.name,'Air tester'); assert.deepEqual(saved.slot.loadout,saved.build);
+  });
+
   await check('Settings affect rendering/input and persist', async () => {
     await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-setting="quality"]').selectOption('low');
     await page.locator('[data-setting="crosshair"]').selectOption('dot');
+    await page.locator('[data-setting="effects"]').selectOption('low');
+    await page.locator('[data-setting="shadows"]').uncheck();
+    await page.locator('[data-setting="reducedMotion"]').check();
     for (const [key,value] of [['fov','96'],['sensitivity','1.4'],['renderScale','0.5'],['masterVolume','0.3']]) {
       await page.locator(`[data-setting="${key}"]`).evaluate((node,value) => { node.value=value; node.dispatchEvent(new Event('input',{bubbles:true})); }, value);
     }
     await page.reload(); await page.waitForFunction(() => !!window.__CHAOS__);
-    const state = await page.evaluate(() => ({ fov:__CHAOS__.ui.settings.fov, sensitivity:__CHAOS__.input.settings.sensitivity, shadow:__CHAOS__.renderer.renderer.shadowMap.enabled, width:document.querySelector('canvas').width }));
+    const state = await page.evaluate(() => ({ fov:__CHAOS__.ui.settings.fov, sensitivity:__CHAOS__.input.settings.sensitivity, shadow:__CHAOS__.renderer.renderer.shadowMap.enabled, width:document.querySelector('canvas').width, maxEffects:__CHAOS__.renderer.maxEffects, reduced:__CHAOS__.renderer.settings.reducedMotion }));
     assert.equal(state.fov,96); assert.equal(state.sensitivity,1.4); assert.equal(state.shadow,false); assert.equal(state.width,720);
+    assert.equal(state.maxEffects,55); assert.equal(state.reduced,true);
   });
 
   await check('Match settings, real click pointer lock, countdown and HUD work', async () => {
@@ -83,6 +135,11 @@ try {
     await page.locator('[data-difficulty="easy"]').click();
     await page.locator('[data-match="duration"]').selectOption('60');
     await page.locator('[data-match="scoreLimit"]').selectOption('10');
+    await page.locator('[data-match="botCount"]').focus();
+    await page.keyboard.press('Home');
+    assert.equal(await page.locator('[data-bot-step="-1"]').isDisabled(),true);
+    for(let i=0;i<5;i++)await page.keyboard.press('ArrowRight');
+    assert.equal(await page.locator('[data-bot-step="-1"]').isDisabled(),false);
     await page.screenshot({ path: `${output}/setup.png` });
     await page.locator('[data-action="start"]').click();
     await page.waitForFunction(() => document.pointerLockElement?.id === 'game-canvas');
@@ -118,10 +175,10 @@ try {
     await page.screenshot({ path: `${output}/gameplay.png` });
     await page.keyboard.press('KeyR');
     await page.waitForFunction(() => __CHAOS__.game.combat.getWeaponState(__CHAOS__.game.player).reloadEnd>0);
-    await page.evaluate(() => __CHAOS__.advance(2.2));
-    assert.equal(await page.evaluate(() => __CHAOS__.game.combat.getWeaponState(__CHAOS__.game.player).ammo),5);
+    await page.evaluate(() => __CHAOS__.advance(4));
+    assert.equal(await page.evaluate(() => __CHAOS__.game.combat.getWeaponState(__CHAOS__.game.player).ammo),7);
     await page.keyboard.press('Digit2'); await page.waitForFunction(() => __CHAOS__.game.player.activeSlot===1);
-    assert.match(await page.locator('[data-el="weapon-name"]').innerText(),/Ding-Dong/i);
+    assert.match(await page.locator('[data-el="weapon-name"]').innerText(),/Doorbell/i);
   });
 
   await check('Keyboard gadgets deploy, cooldown HUD updates, scoreboard opens and closes', async () => {
@@ -136,13 +193,40 @@ try {
     assert.equal(await page.locator('[data-el="scoreboard"]').isVisible(),false);
   });
 
+  await check('Actual F/X input activates the selected class and Impulse with matching HUD feedback', async () => {
+    await page.evaluate(() => {
+      const {game:g,input}=__CHAOS__, p=g.player, b=g.actors[1];
+      p.pos={x:10,y:0,z:0};p.prevPos={...p.pos};p.vel={x:0,y:0,z:0};p.grounded=true;p.yaw=0;p.pitch=0;input.sync(p);
+      b.alive=true;b.health=100;b.invulnerableUntil=0;b.pos={x:10,y:0,z:-4};b.vel={x:0,y:0,z:0};
+      p.impulseCharge=100;g.combat.fields=[];g.combat.projectiles=[];
+    });
+    await page.keyboard.press('KeyX');
+    await page.waitForFunction(() => __CHAOS__.game.player.impulseCharge < 5 && __CHAOS__.game.actors[1].vel.y > 2);
+    assert.equal(await page.locator('[data-el="impulse-name"]').innerText(),'Lift');
+    assert.notEqual(await page.locator('[data-el="impulse-cooldown"]').innerText(),'READY');
+    await page.keyboard.press('KeyF');
+    await page.waitForFunction(() => __CHAOS__.game.player.abilityReady>__CHAOS__.game.time && __CHAOS__.game.player.pos.y>.3);
+    assert.equal(await page.locator('[data-el="ability-name"]').innerText(),'Launch');
+    assert.notEqual(await page.locator('[data-el="ability-cooldown"]').innerText(),'READY');
+    await page.waitForFunction(() => __CHAOS__.game.player.grounded);
+  });
+
   await check('Death, attribution and automatic respawn reach the visible HUD', async () => {
     await page.evaluate(() => { const g=__CHAOS__.game; g.player.invulnerableUntil=0;g.damage(g.player,1000,{attackerId:g.actors[1].id,weaponId:'rail'}); });
     await page.waitForFunction(() => !__CHAOS__.game.player.alive);
-    await page.evaluate(() => __CHAOS__.advance(3));
+    await page.locator('[data-el="center"]').filter({hasText:'RESPAWNING'}).waitFor();
+    await page.evaluate(() => {
+      const {game:g,input}=__CHAOS__;
+      g.player.respawnAt=g.time+1/60;input.yaw=.123;input.pitch=.8;
+      // Force multiple real main-loop fixed steps in the next rendered frame.
+      const until=performance.now()+70;while(performance.now()<until){}
+    });
+    await page.waitForFunction(() => __CHAOS__.game.player.alive);
     assert.equal(await page.evaluate(() => __CHAOS__.game.player.alive),true);
     assert.equal(await page.evaluate(() => __CHAOS__.game.player.deaths),1);
     assert.equal(await page.locator('[data-el="health"]').innerText(),'100');
+    const facing=await page.evaluate(()=>({yaw:__CHAOS__.game.player.yaw,input:__CHAOS__.input.yaw,expected:Math.atan2(__CHAOS__.game.player.pos.x,__CHAOS__.game.player.pos.z)}));
+    assert.ok(Math.abs(facing.yaw-facing.expected)<1e-8); assert.equal(facing.input,facing.yaw);
   });
 
   await check('Escape pauses simulation, resume recaptures mouse', async () => {
@@ -164,13 +248,33 @@ try {
     assert.equal(await page.evaluate(() => __CHAOS__.game.player.kills),0);
     await page.keyboard.press('Escape'); await page.waitForFunction(() => __CHAOS__.game.paused);
     await page.locator('[data-el="pause"] [data-action="menu"]').click();
-    await page.evaluate(() => { __CHAOS__.start({botCount:12,difficulty:'hard',duration:30,scoreLimit:100}); __CHAOS__.advance(34); });
+    await page.evaluate(() => { __CHAOS__.start({botCount:12,difficulty:'veteran',duration:30,scoreLimit:100}); __CHAOS__.advance(34); });
     const end = await page.evaluate(() => ({ state:__CHAOS__.game.match.state, actors:__CHAOS__.game.actors.length, kills:__CHAOS__.game.actors.reduce((s,a)=>s+a.kills,0), valid:__CHAOS__.game.actors.every(a=>Number.isFinite(a.pos.x+a.pos.y+a.pos.z)), effects:__CHAOS__.renderer.effects.length, max:__CHAOS__.renderer.maxEffects }));
     assert.equal(end.state,'ended'); assert.equal(end.actors,13); assert.ok(end.kills>0 && end.valid && end.effects<=end.max);
   });
 
+  await check('Team Deathmatch setup, veteran difficulty, team HUD and draw results are visible', async () => {
+    await page.locator('[data-el="results"] [data-action="menu"]').click();
+    await page.locator('.play-button').click();
+    await page.locator('[data-mode="tdm"]').click();
+    await page.locator('[data-difficulty="veteran"]').click();
+    await page.locator('[data-match="playerTeam"]').selectOption('b');
+    await page.locator('[data-match="name"]').fill('Test Pilot');
+    await page.locator('[data-action="start"]').click();
+    await page.waitForFunction(() => document.pointerLockElement?.id==='game-canvas');
+    await page.evaluate(()=>{__CHAOS__.game.ai.update=()=>{};__CHAOS__.advance(3.1);});
+    assert.equal(await page.evaluate(()=>__CHAOS__.game.player.team),'b');
+    assert.equal(await page.evaluate(()=>__CHAOS__.game.player.name),'Test Pilot');
+    assert.equal(await page.locator('[data-el="mode"]').innerText(),'TEAM DEATHMATCH');
+    assert.equal(await page.locator('[data-el="team-scores"]').isVisible(),true);
+    await page.screenshot({path:`${output}/teams.png`});
+    await page.evaluate(()=>{const g=__CHAOS__.game;g.match.teamScores={a:2,b:2};g.match.remaining=.01;__CHAOS__.advance(.05);});
+    assert.match(await page.locator('[data-el="results"]').innerText(),/DRAW/i);
+    assert.equal(await page.evaluate(()=>__CHAOS__.game.match.winnerTeam),null);
+  });
+
   await check('Narrow menu is usable and corrupted preferences safely reset', async () => {
-    await page.evaluate(() => localStorage.setItem('chaos-fps:preferences:v1','{broken'));
+    await page.evaluate(() => localStorage.setItem('unfug:preferences:v2','{broken'));
     await page.setViewportSize({ width: 390, height: 844 }); await page.reload();
     await page.waitForFunction(() => !!window.__CHAOS__);
     assert.equal(await page.evaluate(() => __CHAOS__.ui.loadout.primary),'fizz');

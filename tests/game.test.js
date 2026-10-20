@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game/Game.js';
 import { DEFAULT_LOADOUT, WEAPONS } from '../src/data/catalog.js';
+import { normalizeLoadout } from '../src/data/customization.js';
 
 const DT = 1 / 60;
 const advance = (game, seconds, input = {}) => {
@@ -142,6 +143,8 @@ test('heavy perk reduces incoming momentum and all impulses have bounded speed',
   const game = fixture(), light = game.player, heavy = game.actors[1];
   light.equipment.perk = 'quick';
   heavy.equipment.perk = 'heavy';
+  light.equipment.classId = heavy.equipment.classId = 'medic';
+  light.classId = heavy.classId = 'medic';
   game.addImpulse(light, { x: 10, y: 4, z: 0 });
   game.addImpulse(heavy, { x: 10, y: 4, z: 0 });
   assert.equal(light.vel.x, 10);
@@ -183,7 +186,7 @@ test('time limit chooses the leader and ends once, while a restart clears scores
 
 test('invalid loadout IDs fall back to real, playable equipment', () => {
   const game = fixture({}, { primary: 'missing', secondary: null, tactical: 'cherry', lethal: 'bubble', perk: 'missing' });
-  assert.deepEqual(game.player.equipment, DEFAULT_LOADOUT);
+  assert.deepEqual(game.player.equipment, normalizeLoadout(DEFAULT_LOADOUT));
   assert.equal(game.combat.getWeaponState(game.player).ammo, WEAPONS[DEFAULT_LOADOUT.primary].magazine);
 });
 
@@ -228,4 +231,15 @@ test('identical seeds and input reproduce the simulation', () => {
     };
   };
   assert.deepEqual(simulate(), simulate());
+});
+
+test('respawn applies its new facing before stale pre-death look input can overwrite it', () => {
+  const game = fixture();
+  game.player.yaw = .123; game.player.pitch = .8;
+  game.damage(game.player, 100, { attackerId: game.actors[1].id });
+  game.player.respawnAt = game.time + DT;
+  game.step(DT, { yaw: .123, pitch: .8 });
+  assert.equal(game.player.alive, true);
+  assert.equal(game.player.yaw, Math.atan2(game.player.pos.x, game.player.pos.z));
+  assert.equal(game.player.pitch, 0);
 });

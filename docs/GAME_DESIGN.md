@@ -1,73 +1,126 @@
-# CHAOS FPS — master game design
+# Unfug — game design and implementation
 
-## Intent and boundaries
+## Identity
 
-A fast, readable, silly arena FPS in which movement and equipment create surprises. The player remains in control; confusion and random instant death are not design goals. Priorities: fun, input response, legible combat, capable bots, reliable full matches, then presentation. The initial map deliberately contains only a floor, boundary walls, nine boxes and one ramp. Environmental art, multiplayer and additional modes wait for later sessions.
+Unfug is a toy-box arena shooter where moving and manipulating momentum creates opportunities. The cast are expressive modular bean contraptions, not military soldiers. The existing fast shooter remains recognizable; this update adds connected systems rather than a new engine or large map.
 
-## Current playable loop
+Five pillars guide future changes:
 
-Lobby → choose a preset or customize five equipment slots → configure a bot FFA → three-second countdown → fight/respawn → score or time limit → ranked results → replay or lobby. Match settings support 1–12 bots, easy/normal/hard, 1/3/5/10 minutes and 10/20/30/50 eliminations. The simulation additionally accepts shorter durations for testing. Every opponent is hostile to everyone else.
+1. **Movement creates choices.** Sprinting, sliding, launch tools and the Impulse meter should create routes and timing decisions.
+2. **Readable mischief.** A surprising interaction still needs an identifiable source, visible effect and counterplay.
+3. **Builds have costs.** Weapons, classes and attachments trade advantages for weaknesses; cosmetics never buy combat strength.
+4. **The same rules for everyone.** Bots and network humans use shared movement, weapon and damage code. Difficulty changes decisions and imperfect aim, not health or damage.
+5. **Reliable rounds first.** FFA and TDM, offline bots, clear results and fast rematches take priority over extra modes or decorative world content.
 
-An elimination awards one point. Self-eliminations add a death without a kill. Ranking sorts kills descending, deaths ascending, then name as a deterministic final tie-break. The first score-limit event ends the match immediately; at the time limit the ranked leader wins. Respawn takes 2.8 seconds at a spawn favoring distance from living opponents. A 1.3-second spawn shield ends when the actor attacks. Ammo, health and gadgets reset on respawn. Pausing freezes all simulation clocks.
+Reference games informed qualities such as readable silhouettes, class counterplay and unconventional weapons. The models, sounds, names and implemented equipment here are original procedural work. No recognizable characters or assets were imported from those games.
 
-## Movement and collision
+## Round structure
 
-Simulation ticks at 60 Hz; rendering has its own clock. Horizontal movement accelerates toward the desired velocity, with stronger control on the ground and weaker air steering. Default movement is 6.5 units/s, sprint 10, crouch 3.6; gravity is 24 units/s² and baseline jump impulse 9 units/s. Diagonal movement is normalized. Crouching lowers the actor's height. Sliding and wall running are not included.
+Lobby → choose a preset or saved build → tune equipment and appearance → configure FFA/TDM or join a room → countdown → combat/respawn → results → rematch or lobby.
 
-The controller is a vertically aligned character volume. Short substeps prevent crossing thin cover at high speed. Horizontal collision slides along walls; feet stand on box tops and the ramp's exact sloped plane. Knockback shares the movement velocity and is bounded. The arena has an invisible upper continuation of its boundary so launching cannot eject actors from the playable area.
+Local setup supports zero to twelve bots, four difficulty tiers, class composition, player name, team, duration and score limit. Zero bots permits practice. TDM prevents friendly damage and friendly offensive impulses. Team eliminations determine the win; a tied timer produces a draw. FFA scores individual eliminations. Assists require at least 20 damage within the last six seconds and do not add another team point. Suicide adds a death without a kill.
 
-Hitscan checks cover, boundary, ramp, body and head geometry. Headshots use a separate sphere. Projectiles use continuous centerline segments with forward radius clearance; they do not use general swept convex geometry. Blast, trap and vortex effects check cover occlusion. Bots use the same movement, damage, equipment and collision routines as the player.
+Actors have 100 health. Respawn takes 2.8 seconds, restores equipment and gives 1.3 seconds of protection that ends when attacking. Spawn scoring favors distance from enemies, usable cover and, in TDM, a mild home-side preference. It does not treat nearby teammates as threats. Individual rankings prioritize kills, fewer deaths, assists, then name. Match results include a winning team for TDM.
+
+A local pause freezes simulation clocks. Opening an online menu releases the local mouse while the authoritative match continues for everyone.
+
+## Signature system: Impulse
+
+The universal meter starts at 35 and caps at 100. Real horizontal movement charges 1.5 per unit, capped at 10 per second; pauses, standing still and teleports do not farm it. Receiving a hostile impulse, including a nondamaging pulse or field, can grant eight charge at most once per second. Spend a full meter with X to emit a short cone pulse:
+
+| Core | Role | Counterplay |
+| --- | --- | --- |
+| Repel | Separate enemies or redirect approaching projectiles | Cover, range, resistance, approach from outside the cone |
+| Lift | Set up an airborne follow-up or interrupt a close rush | Resistance and repositioning; pulse deals no damage |
+| Pull | Bring a rival into short range or bend a shot's trajectory | Keep distance, break sight, use a movement ability |
+
+The pulse reaches eight units, requires line of sight and does no direct damage. It does not affect teammates. Projectile velocity changes are bounded, and ownership does not change: a reflected projectile keeps its original kill attribution. A repeat guard prevents duplicate pulses. The three cores cost the same.
+
+Impulse connects the movement loop to combat without forcing every player into an unusual weapon. Launch a rival with Updraft, follow up with a precision shot, reposition with a slide and spend a pulse to control the landing. Pulling a shot is risky because its damage ownership stays with its original shooter. Shields, resistance perks and geometry are useful counters.
+
+## Classes and builds
+
+Classes share health and collision dimensions. They define a movement tradeoff and one active ability on F, while allowing any weapon/gadget combination.
+
+| Class | Identity | Ability and cost |
+| --- | --- | --- |
+| Runner | 10% faster, more vulnerable to impulse | Dash; 8 s cooldown, stopped by collision |
+| Bulwark | Slower and resistant to impulse | Brace for 3 s: 35% damage reduction and stronger impulse resistance, with a movement penalty; 15 s cooldown |
+| Medic | Neutral movement and team sustain | Temporary healing field; 16 s cooldown |
+| Engineer | Slightly slower, faster reload | Finite reserve-ammo resupply field; 17 s cooldown |
+| Disruptor | Area denial | Temporary field slows exposed enemies and their projectiles; 16 s cooldown |
+| Acrobat | Higher jumps and stronger air control | Upward launch, usable in air; 11 s cooldown |
+
+Support fields help their owner and teammates; in FFA they help only the owner. Timed fields/statuses expire. Existing perks add a second tradeoff: Springs increases speed/jump and incoming knockback; Anchor reduces knockback at movement/reload cost; Quick Hands reduces reload time.
+
+Each build contains two distinct weapons, tactical and lethal gadgets, one perk, class, Impulse core, two gun tuning sets, finishes and appearance. Six presets offer starting points; six browser-local custom saves preserve complete builds. Existing preferences migrate through normalization. Invalid or over-budget values fall back to legal selections.
+
+Each gun has its own five-point tuning budget:
+
+- Barrel options affect accuracy, range, cadence, damage or impulse.
+- Magazine options exchange capacity, reserve ammo and reload time.
+- Handling options exchange movement, accuracy and cadence.
+
+Modifiers apply to actual simulation values, not just displayed stats. Over-budget configurations drop choices in a deterministic order. Classes and perks stack with these modifiers, so extreme combinations need ongoing balance review. Tuning does not replace the different weapon mechanics.
 
 ## Arsenal
 
-Exact balancing lives in `src/data/catalog.js`.
+Exact values and authoritative descriptions live in `src/data/catalog.js`.
 
-| Weapon | Role and mechanic | Tradeoff |
+| Weapon | Main mechanic | Weakness |
 | --- | --- | --- |
-| Fizzy Business | 32-round soda SMG; fast hitscan spray | Range falloff and spread |
-| Ding-Dong, Gone | Nine-pellet shotgun; recoil also pushes the shooter | Short effective range, six rounds |
-| Rubber Duckruptcy | Rubber projectile; three bounces, +22% damage per bank | Travel time and geometry matter |
-| Party Foul | Arcing, bouncing confetti mortar; timed or contact explosion | Four rounds; self-splash is possible |
-| The Last Straw | Accurate, high-damage precision hitscan | Five rounds and slow follow-up |
-| Ceiling Fan Club | Air projectile that launches the target upward | Modest damage; needs a follow-up |
-| Personal Space Invader | Short-range momentum magnet; pulls by default, RMB+LMB pushes | Low range and damage |
+| Fizz | Fast hitscan soda spray | Spread and range falloff |
+| Doorbell | Nine pellets; recoil pushes the user | Short effective range, small magazine |
+| Bankshot | Three ricochets, 22% damage increase per bounce | Travel time and geometry |
+| Confetti | Bouncing lobbed explosive | Slow follow-up, self-splash risk |
+| Last Straw | Precise high-damage shot and headshots | Small magazine, slow cadence |
+| Updraft | Projectile lifts targets | Low damage; needs a follow-up |
+| Yoink | Pull; RMB+fire reverses into push | Short range |
+| Burst Stapler | Three timed hitscan rounds | Must track across the burst |
+| Spool | Sustained fire spins up cadence and spread | Slow start, declining precision |
+| Tack | Projectile applies a short slow | Low damage, travel time |
+| Return Disc | Can hit once going out and once returning | Requires positioning on both legs |
+| Arc | Conducts to two nearby visible enemies | Short range; cover/shields interrupt chains |
 
-Weapons have magazines, finite reserves, fire cadence, reload durations, switching delay and meaningful headshot multipliers where appropriate. ADS narrows FOV and most hitscan spread. Firing an empty gun attempts a reload. Switching cancels the unfinished reload. Shooting triggers original synthesis, traces, impacts, muzzle flashes, kick and subtle hitmarkers; elimination adds a sound sting and confetti. Visual kick is procedural; there is no complex attachment/recoil-pattern system.
+Ammo, reserves, reloads, switching and cadence remain shared mechanics. Headshots use a separate geometric head volume. Shooting an empty weapon attempts a reload; switching cancels an unfinished reload. Model recoil is visual except Doorbell's explicit physical recoil. ADS changes FOV and applicable accuracy.
 
-## Equipment and combinations
+## Gadgets and interactions
 
-| Gadget | Slot | Behavior / restriction |
+| Gadget | Role | Limits |
 | --- | --- | --- |
-| Boing Insurance | Tactical | 18-second shared spring pad; 12-second deployment cooldown; per-actor retrigger cooldown |
-| Personal Bubble | Tactical | Stationary seven-second, 160-health shield; owner can shoot outward; 17-second cooldown |
-| Drama Magnet | Tactical | Five-second local gravity field pulling exposed enemies and bending flying projectiles; 15-second cooldown |
-| Cherry Bomb-ish | Lethal | Bouncing grenade, 1.65-second fuse, radial damage/knockback; nine-second cooldown |
-| Whoopee Cushion | Lethal | Proximity trap, 0.8-second arming delay, damage plus launch; owner does not trigger it; 12-second cooldown |
+| Spring Pad | Launch and route changes | Per-actor retrigger delay; teammates only in TDM, shared in FFA |
+| Bubble | Block enemy shots and blasts; allies can shoot out | 160 health, seven seconds |
+| Vortex | Pull exposed enemies and hostile projectiles | Cover and duration bound the effect |
+| Rush Pad | Owner/allied speed field | Short lingering buff after leaving |
+| Repulsor | Push enemies and deflect their projectiles | Local radius, line of sight and finite duration |
+| Cherry Bomb | Bouncing timed explosive | Fuse, self-damage and cooldown |
+| Whoopee Trap | Proximity damage and launch | Arms after 0.8 s; allies do not trigger it |
+| Cherry Trio | Splits into three small delayed explosives | Limited children, modest individual radius |
 
-Spring pads make vertical routes and escapes. Downward shotgun recoil adds height. Air-cannon launches create precision opportunities. Magnet pull can gather rivals near explosives; its alternate push can repel them. Gravity fields curve rubber shots and grenades. Cover blocks area effects, and shields can intercept shots and explosions. Self-blast damage is reduced, not removed. No team-specific gadget rules are needed in this FFA build.
+Projectile and field collections have hard limits. Area interactions use world occlusion. Boosts/slows are timed; repeated refresh does not create permanent status. Full general-purpose rigid-body interactions, movable props and arbitrary effect stacking are outside this version.
 
-Perks: **Loose Springs** increases speed and jump impulse but also incoming knockback; **Emotional Baggage** cuts incoming impulse with movement/reload penalties; **Fast Hands, No Plans** reduces reload time. Four curated presets are House Party, Creative Accounting, Space Program and Certified Disaster. Primary, secondary, tactical, lethal and perk choices persist in versioned local storage.
+## Movement, bots and presentation
 
-## Bots
+Simulation advances at 60 Hz. Acceleration, normalized diagonal input, grounded/air steering, sprint, crouch, jump, slopes, cover sliding and bounded impulses are shared by all actors. Sprint then press crouch with enough momentum to slide; holding crouch cannot repeatedly retrigger it. Jump cancels a slide. Substeps prevent fast movement crossing thin walls. Projectiles use swept centerline/radius-clearance collision, not general swept convex geometry.
 
-Bots use A* over a clearance-aware grid derived from the map, with collision-tested path smoothing. Limited range/cone and line-of-sight checks govern perception. Visible enemies may be any other actor. Targets hidden by walls are remembered briefly at their last observed position; damage cues provide a noisy hint instead of exact tracking. Every shot rechecks occlusion.
+Bots perceive through range/facing/line-of-sight checks, wait before firing and remember only last-seen positions briefly. Hearing gives a noisy damage cue. Four difficulties change reaction, aim error, movement/tactics and equipment use. They retain the same health and weapon damage. Classes/loadouts/personality influence choices. Bots can fight other bots and coexist with humans; human actors are excluded from AI control. Navigation now supports ramp-to-platform routes with surface-height-aware traversal and physical drop recovery from isolated rooftops. More complex multi-level geometry still needs further navigation work.
 
-Difficulty modifies reaction latency, aim error, prediction, firing bursts, aggression and movement, not health. Profiles favor rush, distance, unusual gadgets, or precision; they map to aggressive, cautious, chaotic and precision personalities in the actor data. Bots roam when uninformed, strafe while engaged, reload, swap weapons, react to pressure, use situational gadgets and recover when stuck. The grid conservatively treats the current ramp as blocked, so bots fight around it instead of planning elevation routes.
+Characters are modular procedural models with class silhouettes and selectable colors/accessories/patterns. Team identification uses shape/text cues in addition to color. All cosmetics retain the same hit volumes. Weapon finishes and tuning alter presentation. Procedural motion covers running, air movement, recoil, reload, hits and elimination; it is not a skeletal cinematic animation system or ragdoll simulation.
 
-## Presentation and settings
+The HUD exposes health, ammo, gadgets, ability readiness, Impulse charge/core, team score, kills and match time. Settings change sensitivity, inverted vertical aim, FOV, audio/music gains, graphics preset, render scale, shadows, effects quality, crosshair, shake and reduced motion. Preferences and builds use versioned local storage. Accessibility remains partial: controls are fixed and touch/controller support is absent.
 
-Procedural bean combatants with expressive eyes, hats, feet and toy guns. Running, airborne motion, recoil, reload, hits and confetti eliminations are presented using transforms and bounded effects. Viewmodel weapons render in a separate scene to avoid clipping into cover. A restrained graybox leaves combat readable. Lighting/shadows, render resolution, FOV, crosshair, camera shake, input sensitivity and sound gains respond to settings. Quality presets reduce shadows/effect budgets. Settings and equipment survive reload, including safe fallback from malformed local storage.
+Sound is synthesized through Web Audio. Shots, impacts, abilities, Impulse, movement and match events have generated cues, with a procedural ambient musical layer and an independent music-volume setting. No voice acting or downloaded sound library is included.
 
-All sound is Web Audio synthesis: shots, reloads, switching, hits, kills, blasts, gadgets, jumps, landings, menus and match outcomes. Browser audio starts only after an interaction. There is no music track or external sound library.
+## Multiplayer foundation
 
-## Architecture and extension
+The Node WebSocket server imports the same `Game` simulation. Rooms use anonymous six-character codes, support eight humans plus twelve bots and have one host who starts/rematches. Join is allowed in lobby/results. Host departure transfers ownership; an empty room is removed. Server simulation is 60 Hz, snapshots 15 Hz. Clients send input, not trusted positions or damage.
 
-`Game` owns simulation state and match rules. `Combat` owns projectiles and gadget fields. `AI` emits intentions and calls the shared combat API. Physics handles movement and geometric queries. Input produces player intentions. Renderer/UI/audio consume state and events. `main.js` advances the simulation using an accumulator and handles pointer lock, pause, focus loss and results. Catalog and arena modules supply data.
+The transport validates names, loadouts and inputs, caps payloads/rates and allows at most eight rooms and 128 connections and neutralizes stale inputs. Snapshots contain actors, projectiles, fields, events, match state and recipient-specific player identity. The browser interpolates authoritative updates. No local movement prediction, rewind/lag compensation, reconnect recovery, accounts, matchmaking or persistent progression are implemented. This is playable small-room groundwork, not a hardened competitive backend.
 
-For multiplayer, retain actor IDs, commands and event boundaries; add an authoritative server, validated input protocol, state serialization, interpolation/prediction and reconciliation. Deterministic seeded tests aid diagnosis but are not a network implementation. For more maps, start with data-compatible obstacles/ramps/spawns and rebuild navigation. Complex meshes, moving cover and general rigid bodies would need further collision/navigation work.
+The static bot game runs on GitHub Pages. Real remote rooms require a separately hosted persistent server behind TLS/WebSocket upgrades. A public compatible server is not part of the static deployment.
 
-## Validation status and known limits
+## Architecture, scope and validation
 
-The authoritative executed checks and browser scenarios are recorded in `TESTING.md`. The core deterministic suite covers physics, match rules, combat interactions, bot perception and full bot matches. Human feel/balance testing, other browsers, real GPU performance, mobile input, touch accessibility, online multiplayer and desktop packaging remain separate work. Production is a static browser build, not a hosted service.
+Data defines loadouts; normalization is shared by UI/server/simulation. `Game` owns match and actor state, `Combat` owns equipment effects, AI emits intentions, physics applies movement, and renderer/UI/audio consume state/events. Network snapshots cross this boundary without a separate client damage model. The simple map remains data-driven and intentionally unchanged in scope.
 
-The roadmap and every deferred initial-brief feature are tracked in `BACKLOG.md`. Expand the gameplay before expanding the map.
+Executed checks are recorded in `TESTING.md`. Balance, perceived responsiveness, sound mix, readability on real GPUs and WAN latency still require human/device testing. `BACKLOG.md` distinguishes implemented work, partial systems and next priorities. Do not add new modes or an elaborate map before testing this expanded combat loop with people.

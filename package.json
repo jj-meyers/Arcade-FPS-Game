@@ -1,19 +1,25 @@
 {
-  "name": "chaos-fps",
-  "version": "0.1.0",
+  "name": "unfug",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "build:standalone": "node scripts/build-standalone.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test": "node --test tests/*.test.js",
-    "test:browser": "node tests/browser.mjs"
+    "test:browser": "node tests/browser.mjs",
+    "server": "node server/index.js",
+    "test:network": "node --test tests/network.test.js",
+    "test:network:browser": "node tests/network-browser.mjs"
   },
   "dependencies": {
-    "three": "0.180.0"
+    "three": "0.180.0",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "playwright": "1.56.1",
